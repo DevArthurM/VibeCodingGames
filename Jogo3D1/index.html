@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo 3D Simples</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Arial', sans-serif;
+        }
+        
+        /* HUD Principal */
+        #score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 8px 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        /* Barra de status premium */
+        #playerInfo {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 12px;
+            border-radius: 8px;
+            width: 350px;
+            display: none; /* Começa oculto */
+            flex-direction: column;
+            gap: 10px;
+            border: 1px solid rgba(128, 0, 128, 0.5);
+            box-shadow: 0 0 15px rgba(128, 0, 128, 0.3);
+            transition: opacity 0.3s ease;
+            opacity: 0;
+            z-index: 100;
+        }
+        
+        #playerInfo.visible {
+            display: flex;
+            opacity: 1;
+        }
+        
+        .stat-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .stat-label {
+            width: 100px;
+            text-align: left;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        .stat-bar-container {
+            flex-grow: 1;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .stat-bar {
+            height: 100%;
+            background: linear-gradient(to right, #800080, #ff00ff);
+            border-radius: 6px;
+            transition: width 0.3s;
+        }
+        
+        .stat-value {
+            width: 40px;
+            text-align: right;
+            font-size: 14px;
+        }
+        
+        .health-stat .stat-bar {
+            background: linear-gradient(to right, #ff0000, #ff6666);
+        }
+        
+        .xp-stat .stat-bar {
+            background: linear-gradient(to right, #4169e1, #00bfff);
+        }
+        
+        /* Barras de vida flutuantes */
+        .health-bar-3d {
+            position: absolute;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            transform: translate(-50%, 0); /* Centralizar horizontalmente */
+        }
+        
+        .health-fill-3d {
+            height: 5px;
+            background: linear-gradient(to right, #ff0000, #ff6666);
+            border-radius: 2px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        
+        .health-text-3d {
+            color: white;
+            font-size: 10px;
+            text-shadow: 1px 1px 1px black;
+            margin-top: -2px;
+        }
+        
+        .level-badge {
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            background: linear-gradient(135deg, #800080, #ff00ff);
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            text-shadow: 1px 1px 1px black;
+        }
+
+        /* Tela de Game Over */
+        #gameOverScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #gameOverScreen h1 {
+            color: #ff0000;
+            font-size: 72px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px #ff0000;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 2px;
+            animation: pulse 2s infinite;
+        }
+
+        #gameOverScreen p {
+            color: white;
+            font-size: 24px;
+            margin-bottom: 40px;
+            text-align: center;
+            max-width: 600px;
+        }
+
+        #gameOverScreen button {
+            background: linear-gradient(to bottom, #800080, #4b0082);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(128, 0, 128, 0.7);
+        }
+
+        #gameOverScreen button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 25px rgba(128, 0, 128, 0.9);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.9; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        #scoreText {
+            color: #00bfff;
+            font-weight: bold;
+        }
+
+        #levelText {
+            color: #ff00ff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="playerInfo">
+        <div class="level-badge">1</div>
+        <div class="stat-row health-stat">
+            <div class="stat-label">Health</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 100%"></div>
+            </div>
+            <div class="stat-value">100/100</div>
+        </div>
+        <div class="stat-row xp-stat">
+            <div class="stat-label">Experience</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 0%"></div>
+            </div>
+            <div class="stat-value">0/20</div>
+        </div>
+        <div class="stat-row">
+            <div class="stat-label">Speed</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 20%"></div>
+            </div>
+            <div class="stat-value">1</div>
+        </div>
+        <div class="stat-row">
+            <div class="stat-label">Damage</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 20%"></div>
+            </div>
+            <div class="stat-value">1</div>
+        </div>
+        <div class="stat-row">
+            <div class="stat-label">Area</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 20%"></div>
+            </div>
+            <div class="stat-value">1</div>
+        </div>
+        <div class="stat-row">
+            <div class="stat-label">Projectiles</div>
+            <div class="stat-bar-container">
+                <div class="stat-bar" style="width: 20%"></div>
+            </div>
+            <div class="stat-value">1</div>
+        </div>
+    </div>
+
+    <!-- Tela de Game Over -->
+    <div id="gameOverScreen">
+        <h1>Game Over</h1>
+        <p>You reached level <span id="levelText">1</span> and scored <span id="scoreText">0</span> points!</p>
+        <button id="restartButton">Play Again</button>
+    </div>
+
+    <canvas id="miniMap" style="position: absolute; top: 20px; right: 20px; border: 1px solid white;"></canvas>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Configurações do mini mapa
+        const miniMapCanvas = document.getElementById('miniMap');
+        const miniMapContext = miniMapCanvas.getContext('2d');
+        const miniMapSize = 200; // Tamanho do mini mapa
+        miniMapCanvas.width = miniMapSize;
+        miniMapCanvas.height = miniMapSize;
+
+        // Função para desenhar o mini mapa
+        function drawMiniMap() {
+            // Limpar o mini mapa
+            miniMapContext.clearRect(0, 0, miniMapCanvas.width, miniMapCanvas.height);
+            
+            // Desenhar fundo do mini mapa
+            miniMapContext.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            miniMapContext.fillRect(0, 0, miniMapCanvas.width, miniMapCanvas.height);
+            
+            // Desenhar o jogador
+            miniMapContext.fillStyle = 'blue'; // Cor do jogador
+            const playerMiniMapX = (player.position.x + 50) * (miniMapSize / 100); // Ajustar para o tamanho do mini mapa
+            const playerMiniMapY = (player.position.z + 50) * (miniMapSize / 100); // Ajustar para o tamanho do mini mapa
+            miniMapContext.beginPath();
+            miniMapContext.arc(playerMiniMapX, playerMiniMapY, 3, 0, Math.PI * 2);
+            miniMapContext.fill();
+            
+            // Desenhar inimigos
+            for (const enemy of enemies) {
+                miniMapContext.fillStyle = 'red'; // Cor dos inimigos
+                const enemyMiniMapX = (enemy.position.x + 50) * (miniMapSize / 100); // Ajustar para o tamanho do mini mapa
+                const enemyMiniMapY = (enemy.position.z + 50) * (miniMapSize / 100); // Ajustar para o tamanho do mini mapa
+                miniMapContext.beginPath();
+                miniMapContext.arc(enemyMiniMapX, enemyMiniMapY, 2, 0, Math.PI * 2);
+                miniMapContext.fill();
+            }
+        }
+
+        // Configuração básica
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x191970); // Azul noite escuro
+        
+        // Câmera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Renderer com sombras
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Sombras suaves
+        document.body.appendChild(renderer.domElement);
+        
+        // Luzes
+        const ambientLight = new THREE.AmbientLight(0x202040, 0.52); // Aumentado em 30% (de 0.4 para 0.52)
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0x404080, 0.65); // Aumentado em 30% (de 0.5 para 0.65)
+        directionalLight.position.set(5, 10, 7);
+        directionalLight.castShadow = true;
+        // Configurar área de sombra da luz direcional
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 50;
+        directionalLight.shadow.camera.left = -20;
+        directionalLight.shadow.camera.right = 20;
+        directionalLight.shadow.camera.top = 20;
+        directionalLight.shadow.camera.bottom = -20;
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+        directionalLight.shadow.darkness = 0.8; // Sombras mais escuras
+        scene.add(directionalLight);
+        
+        // Luz da lua - adicionar uma luz azulada suave vinda de um lado
+        const moonLight = new THREE.DirectionalLight(0x8080FF, 0.39); // Aumentado em 30% (de 0.3 para 0.39)
+        moonLight.position.set(-10, 8, -5);
+        scene.add(moonLight);
+        
+        // Chão com sombras - mais escuro
+        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1a3300, // Verde muito escuro
+            roughness: 0.9,
+            metalness: 0.1 
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = 0;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // Jogador com sombras - mantém roxo mas mais brilhante para contrastar com o ambiente escuro
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x9932CC, // Roxo mais vibrante
+            roughness: 0.5,
+            metalness: 0.4,
+            emissive: 0x2a0a4a, // Leve brilho roxo
+            emissiveIntensity: 0.4
+        }); 
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.y = 0.5;
+        player.castShadow = true;
+        player.receiveShadow = true;
+        scene.add(player);
+        
+        // Ponto de luz no jogador para melhor visibilidade - mais intensa para compensar ambiente escuro
+        const playerLight = new THREE.PointLight(0xb060ff, 1.2, 8);
+        playerLight.position.set(0, 2, 0);
+        playerLight.castShadow = true;
+        playerLight.shadow.mapSize.width = 512;
+        playerLight.shadow.mapSize.height = 512;
+        player.add(playerLight);
+        
+        // Configuração da câmera isométrica
+        const cameraOffset = new THREE.Vector3(0, 20, 10);
+        const cameraLerpFactor = 0.1;
+        camera.position.copy(player.position).add(cameraOffset);
+        camera.lookAt(player.position);
+
+        // Variáveis para navegação por clique do mouse
+        let targetPosition = null;
+        let isMovingToTarget = false;
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        // Variáveis para controle de disparo
+        let isMouseDown = false;
+        let lastShotTime = 0;
+        const shotCooldown = 1000; // 1000ms = 1 segundo
+        
+        // Detectar pressionar e soltar do mouse para atirar
+        window.addEventListener('mousedown', (event) => {
+            isMouseDown = true;
+            
+            // Calcular posição do mouse em coordenadas normalizadas (-1 a +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Disparo inicial imediato, se o cooldown permitir
+            const currentTime = Date.now();
+            if (currentTime - lastShotTime >= shotCooldown) {
+                shootAtMouse();
+                lastShotTime = currentTime; // Atualiza o tempo do último disparo
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        window.addEventListener('mousemove', (event) => {
+            // Atualizar posição do mouse enquanto se move
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // Função para atirar na direção do mouse
+        function shootAtMouse() {
+            // Atualizar o raycaster com a posição do mouse e a câmera
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calcular objetos que intersectam com o raio
+            const intersects = raycaster.intersectObjects([ground]);
+            
+            if (intersects.length > 0) {
+                // Pegar o primeiro ponto de interseção
+                const clickPosition = intersects[0].point;
+                
+                // Criar projétil em direção ao ponto clicado
+                createProjectileToPoint(clickPosition);
+                
+                // Efeito visual de clique
+                createClickMarker(clickPosition);
+            }
+        }
+        
+        // Criar projétil direcionado a um ponto
+        function createProjectileToPoint(targetPoint) {
+            const projectileGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const projectileMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffaa00,
+                emissive: 0xffaa00,
+                emissiveIntensity: 0.8 // Mais brilhante para ser visível no escuro
+            });
+            const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+            
+            // Definir posição inicial (do jogador)
+            projectile.position.copy(player.position);
+            projectile.position.y = 0.5;
+            
+            // Calcular direção para o ponto alvo
+            const direction = new THREE.Vector3();
+            direction.subVectors(targetPoint, projectile.position);
+            direction.y = 0; // Manter projétil no plano horizontal
+            direction.normalize();
+            
+            projectile.direction = direction;
+            projectile.speed = 0.3;
+            projectile.damage = 10 * projectileDamage;
+            projectile.lifetime = 100;
+            projectile.castShadow = true;
+            
+            scene.add(projectile);
+            projectiles.push(projectile);
+            
+            // Efeito de disparo
+            createParticleSystem(player.position, 0xffaa00, 3);
+        }
+        
+        // Criar marcador visual de clique
+        function createClickMarker(position) {
+            // Criar círculo no local clicado
+            const markerGeometry = new THREE.CircleGeometry(0.5, 16);
+            markerGeometry.rotateX(-Math.PI / 2); // Rotacionar para ficar no plano do chão
+            
+            const markerMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            marker.position.copy(position);
+            marker.position.y += 0.01; // Colocar ligeiramente acima do chão para evitar z-fighting
+            scene.add(marker);
+            
+            // Animar e remover após um tempo
+            let opacity = 0.7;
+            const fadeOut = setInterval(() => {
+                opacity -= 0.05;
+                if (opacity <= 0) {
+                    clearInterval(fadeOut);
+                    scene.remove(marker);
+                } else {
+                    markerMaterial.opacity = opacity;
+                }
+            }, 50);
+        }
+        
+        // Função para mover personagem para o alvo
+        function moveToTarget() {
+            if (!isMovingToTarget || !targetPosition) return;
+            
+            // Calcular direção para o alvo
+            const direction = new THREE.Vector3();
+            direction.subVectors(targetPosition, player.position);
+            direction.y = 0; // Ignorar movimento vertical
+            
+            // Verificar se já chegamos próximo o suficiente
+            const distanceToTarget = direction.length();
+            if (distanceToTarget < 0.2) {
+                isMovingToTarget = false;
+                return;
+            }
+            
+            // Normalizar vetor de direção e aplicar velocidade
+            direction.normalize();
+            const moveSpeed = 0.1 * playerSpeed;
+            
+            // Mover na direção do alvo
+            player.position.x += direction.x * moveSpeed;
+            player.position.z += direction.z * moveSpeed;
+        }
+
+        // Variáveis do jogo
+        let score = 0;
+        const scoreElement = document.getElementById('score');
+        const playerInfo = document.getElementById('playerInfo');
+        let playerLevel = 1;
+        let playerSpeed = 1;
+        let projectileDamage = 1;
+        let projectileArea = 1;
+        let projectileCount = 1;
+        let xp = 0;
+        const xpToLevel = level => level * 20;
+        
+        // Vida do jogador
+        let playerHealth = 100;
+        let playerMaxHealth = 100;
+        
+        // Arrays para objetos do jogo
+        const enemies = [];
+        const projectiles = [];
+        const xpOrbs = [];
+        const particles = [];
+        const healthBars = {}; // Para armazenar elementos de barra de vida
+        
+        // Criar barra de vida 3D
+        function createHealthBar3D(entityId, isPlayer = false, enemyType = null) {
+            // Criar elementos da barra de vida
+            const container = document.createElement('div');
+            container.className = 'health-bar-3d';
+            
+            const barContainer = document.createElement('div');
+            barContainer.className = 'stat-bar-container';
+            
+            // Definir largura fixa para a barra de vida dos inimigos
+            const barWidth = 40; // Largura fixa para todos os inimigos
+            barContainer.style.width = `${barWidth}px`;
+            barContainer.style.height = isPlayer ? '6px' : '4px';
+            barContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+            barContainer.style.border = '1px solid rgba(0, 0, 0, 0.8)';
+            
+            const barFill = document.createElement('div');
+            barFill.className = 'health-fill-3d';
+            barFill.style.width = '100%';
+            barFill.style.height = '100%';
+            
+            // Se for jogador, colocar cor diferente
+            if (isPlayer) {
+                barFill.style.background = 'linear-gradient(to right, #00ff00, #66ff66)';
+            } else {
+                // Cor vermelha para todos os inimigos
+                barFill.style.background = 'red';
+            }
+            
+            barContainer.appendChild(barFill);
+            container.appendChild(barContainer);
+            
+            // Adicionar texto de vida se for jogador
+            if (isPlayer) {
+                const healthText = document.createElement('div');
+                healthText.className = 'health-text-3d';
+                healthText.textContent = '100/100';
+                container.appendChild(healthText);
+            }
+            
+            document.body.appendChild(container);
+            
+            // Armazenar referência
+            healthBars[entityId] = {
+                container: container,
+                fill: barFill,
+                text: isPlayer ? container.querySelector('.health-text-3d') : null
+            };
+            
+            return healthBars[entityId];
+        }
+        
+        // Atualizar barra de vida 3D
+        function updateHealthBar3D(entityId, entity, currentHealth, maxHealth) {
+            if (!healthBars[entityId]) return;
+            
+            const healthPercent = Math.max(0, Math.min(100, (currentHealth / maxHealth) * 100));
+            healthBars[entityId].fill.style.width = `${healthPercent}%`;
+            
+            // Mudar cor para vermelho para todos os inimigos
+            if (entityId !== 'player') {
+                healthBars[entityId].fill.style.background = 'red'; // Cor vermelha para todos os inimigos
+            } else {
+                // Mudar cor com base na saúde do jogador
+                if (healthPercent < 25) {
+                    healthBars[entityId].fill.style.background = 'linear-gradient(to right, #ff0000, #ff3333)';
+                }
+            }
+            
+            // Atualizar texto se for jogador
+            if (healthBars[entityId].text) {
+                healthBars[entityId].text.textContent = `${Math.floor(currentHealth)}/${maxHealth}`;
+            }
+            
+            // Posicionar a barra no mundo 3D
+            const vector = new THREE.Vector3();
+            vector.setFromMatrixPosition(entity.matrixWorld);
+            // Se a entidade for jogador o ajuste do vetor y deve ser 2
+            if (entityId === 'player') {
+                vector.y += 2;
+            }
+            // Ajustar posição para ficar acima da cabeça
+            const entityHeight = entity.scale.y || 1;
+            vector.y += entityHeight * 1; // Posicionar acima do objeto com base na escala
+            
+            // Converter posição 3D para coordenadas de tela
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (- vector.y * 0.5 + 0.5) * window.innerHeight;
+            
+            healthBars[entityId].container.style.left = `${x}px`;
+            healthBars[entityId].container.style.top = `${y}px`;
+            
+            // Mostrar ou esconder dependendo da posição na tela
+            if (x < 0 || x > window.innerWidth || y < 0 || y > window.innerHeight) {
+                healthBars[entityId].container.style.display = 'none';
+            } else {
+                healthBars[entityId].container.style.display = 'flex';
+            }
+        }
+        
+        // Remover barra de vida 3D
+        function removeHealthBar3D(entityId) {
+            if (healthBars[entityId]) {
+                healthBars[entityId].container.remove();
+                delete healthBars[entityId];
+            }
+        }
+
+        // Atualizar interface do jogador
+        function updatePlayerHUD() {
+            // Atualizar badge de nível
+            const levelBadge = playerInfo.querySelector('.level-badge');
+            levelBadge.textContent = playerLevel;
+            
+            // Atualizar barra de vida
+            const healthBar = playerInfo.querySelector('.health-stat .stat-bar');
+            const healthValue = playerInfo.querySelector('.health-stat .stat-value');
+            const healthPercent = (playerHealth / playerMaxHealth) * 100;
+            
+            healthBar.style.width = `${healthPercent}%`;
+            healthValue.textContent = `${playerHealth}/${playerMaxHealth}`;
+            
+            // Atualizar barra de XP
+            const xpBar = playerInfo.querySelector('.xp-stat .stat-bar');
+            const xpValue = playerInfo.querySelector('.xp-stat .stat-value');
+            const nextLevel = xpToLevel(playerLevel);
+            const xpPercent = (xp / nextLevel) * 100;
+            
+            xpBar.style.width = `${xpPercent}%`;
+            xpValue.textContent = `${xp}/${nextLevel}`;
+            
+            // Atualizar outras estatísticas
+            const statBars = playerInfo.querySelectorAll('.stat-row:not(.health-stat):not(.xp-stat)');
+            
+            // Velocidade (2ª barra após vida e XP)
+            statBars[0].querySelector('.stat-bar').style.width = `${playerSpeed * 20}%`;
+            statBars[0].querySelector('.stat-value').textContent = playerSpeed.toFixed(1);
+            
+            // Dano
+            statBars[1].querySelector('.stat-bar').style.width = `${projectileDamage * 20}%`;
+            statBars[1].querySelector('.stat-value').textContent = projectileDamage.toFixed(1);
+            
+            // Área
+            statBars[2].querySelector('.stat-bar').style.width = `${projectileArea * 20}%`;
+            statBars[2].querySelector('.stat-value').textContent = projectileArea.toFixed(1);
+            
+            // Projéteis
+            statBars[3].querySelector('.stat-bar').style.width = `${projectileCount * 20}%`;
+            statBars[3].querySelector('.stat-value').textContent = projectileCount;
+            
+            // Atualizar pontuação
+            scoreElement.textContent = `Score: ${score}`;
+        }
+        
+        // Controles do jogador
+        const keys = {};
+        let statusBarVisible = false;
+        
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            
+            // Alternar visibilidade da barra de status com a tecla "o"
+            if (e.key.toLowerCase() === 'o') {
+                statusBarVisible = !statusBarVisible;
+                const playerInfoElement = document.getElementById('playerInfo');
+                
+                if (statusBarVisible) {
+                    playerInfoElement.classList.add('visible');
+                } else {
+                    playerInfoElement.classList.remove('visible');
+                }
+            }
+        });
+        
+        window.addEventListener('keyup', e => keys[e.key] = false);
+        
+        // Tipos de inimigos
+        const enemyTypes = {
+            normal: {
+                color: 0xff0000,
+                scale: 1,
+                health: 20,
+                speed: 0.03,
+                damage: 10,
+                xpValue: 10
+            },
+            fast: {
+                color: 0x00ffff,
+                scale: 0.7,
+                health: 10,
+                speed: 0.06,
+                damage: 5,
+                xpValue: 15
+            },
+            tank: {
+                color: 0x8B4513,
+                scale: 1.5,
+                health: 40,
+                speed: 0.02,
+                damage: 15,
+                xpValue: 20
+            }
+        };
+        
+        // Criar objetos
+        function createHouse(x, z) {
+            const houseGroup = new THREE.Group();
+            
+            // Corpo da casa
+            const bodyGeometry = new THREE.BoxGeometry(2, 1.5, 2);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513,
+                roughness: 0.7 
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.75;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            houseGroup.add(body);
+            
+            // Telhado
+            const roofGeometry = new THREE.ConeGeometry(1.5, 1, 4);
+            const roofMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xCD5C5C,
+                roughness: 0.6 
+            });
+            const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+            roof.position.y = 2;
+            roof.rotation.y = Math.PI / 4;
+            roof.castShadow = true;
+            roof.receiveShadow = true;
+            houseGroup.add(roof);
+            
+            houseGroup.position.set(x, 0, z);
+            scene.add(houseGroup);
+            return houseGroup;
+        }
+        
+        function createTree(x, z) {
+            const treeGroup = new THREE.Group();
+            
+            // Tronco
+            const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513,
+                roughness: 0.9 
+            });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 0.5;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            treeGroup.add(trunk);
+            
+            // Copa
+            const topGeometry = new THREE.ConeGeometry(1, 2, 8);
+            const topMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x228B22,
+                roughness: 0.8 
+            });
+            const top = new THREE.Mesh(topGeometry, topMaterial);
+            top.position.y = 2;
+            top.castShadow = true;
+            top.receiveShadow = true;
+            treeGroup.add(top);
+            
+            treeGroup.position.set(x, 0, z);
+            scene.add(treeGroup);
+            return treeGroup;
+        }
+        
+        function createBush(x, z) {
+            const bushGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+            const bushMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x006400,
+                roughness: 0.8 
+            });
+            const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+            bush.position.set(x, 0.5, z);
+            bush.castShadow = true;
+            bush.receiveShadow = true;
+            scene.add(bush);
+            return bush;
+        }
+        
+        // Gerar objetos do ambiente
+        function generateEnvironment() {
+            // Gerar casas
+            for (let i = 0; i < 10; i++) {
+                const x = Math.random() * 80 - 40;
+                const z = Math.random() * 80 - 40;
+                createHouse(x, z);
+            }
+            
+            // Gerar árvores
+            for (let i = 0; i < 30; i++) {
+                const x = Math.random() * 80 - 40;
+                const z = Math.random() * 80 - 40;
+                createTree(x, z);
+            }
+            
+            // Gerar arbustos
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * 80 - 40;
+                const z = Math.random() * 80 - 40;
+                createBush(x, z);
+            }
+        }
+        
+        // Spawnar inimigo
+        function spawnEnemy() {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 20 + Math.random() * 10;
+            const x = player.position.x + Math.cos(angle) * distance;
+            const z = player.position.z + Math.sin(angle) * distance;
+            
+            // Selecionar tipo de inimigo aleatoriamente
+            const enemyTypeKeys = Object.keys(enemyTypes);
+            const enemyType = enemyTypes[enemyTypeKeys[Math.floor(Math.random() * enemyTypeKeys.length)]];
+            
+            const enemyGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const enemyMaterial = new THREE.MeshStandardMaterial({ 
+                color: enemyType.color,
+                roughness: 0.7
+            });
+            const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+            
+            enemy.position.set(x, enemyType.scale / 2, z);
+            enemy.scale.set(enemyType.scale, enemyType.scale, enemyType.scale);
+            enemy.health = enemyType.health;
+            enemy.maxHealth = enemyType.health;
+            enemy.speed = enemyType.speed;
+            enemy.damage = enemyType.damage;
+            enemy.xpValue = enemyType.xpValue;
+            enemy.id = 'enemy-' + Date.now() + '-' + enemies.length;
+            enemy.type = enemyType;
+            enemy.castShadow = true;
+            enemy.receiveShadow = true;
+            
+            // Criar barra de vida para o inimigo
+            createHealthBar3D(enemy.id, false, enemyType);
+            
+            scene.add(enemy);
+            enemies.push(enemy);
+        }
+        
+        // Criar sistema de partículas
+        function createParticleSystem(position, color, count) {
+            for (let i = 0; i < count; i++) {
+                const particle = {
+                    position: new THREE.Vector3(
+                        position.x + (Math.random() - 0.5) * 0.5,
+                        position.y + (Math.random() - 0.5) * 0.5,
+                        position.z + (Math.random() - 0.5) * 0.5
+                    ),
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.1,
+                        Math.random() * 0.1,
+                        (Math.random() - 0.5) * 0.1
+                    ),
+                    size: Math.random() * 0.2 + 0.1,
+                    lifetime: 60,
+                    maxLifetime: 60,
+                    color: color
+                };
+                
+                const geometry = new THREE.BoxGeometry(particle.size, particle.size, particle.size);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: particle.color,
+                    emissive: particle.color,
+                    emissiveIntensity: 0.5,
+                    transparent: true,
+                    opacity: 1
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.copy(particle.position);
+                mesh.castShadow = true;
+                scene.add(mesh);
+                
+                particle.mesh = mesh;
+                particles.push(particle);
+            }
+        }
+        
+        // Criar orbe de XP - mais brilhante no escuro
+        function createXpOrb(position, value, color = 0x00ff00) {
+            const orbGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const orbMaterial = new THREE.MeshStandardMaterial({ 
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.8, // Mais brilhante
+                transparent: true,
+                opacity: 0.8
+            });
+            const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+            orb.position.copy(position);
+            orb.position.y = 0.3;
+            orb.xpValue = value;
+            orb.castShadow = true;
+            
+            // Adicionar luz ao orbe - mais intensa
+            const orbLight = new THREE.PointLight(color, 0.8, 3);
+            orbLight.position.set(0, 0, 0);
+            orb.add(orbLight);
+            
+            scene.add(orb);
+            xpOrbs.push(orb);
+            return orb;
+        }
+        
+        // Criar projétil
+        function createProjectile() {
+            const projectileGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const projectileMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffff00,
+                emissive: 0xffff00,
+                emissiveIntensity: 0.5
+            });
+            const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+            
+            // Encontrar o inimigo mais próximo
+            let nearestEnemy = null;
+            let nearestDistance = Infinity;
+            
+            for (const enemy of enemies) {
+                const distance = player.position.distanceTo(enemy.position);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestEnemy = enemy;
+                }
+            }
+            
+            // Definir posição e direção
+            projectile.position.copy(player.position);
+            projectile.position.y = 0.5;
+            
+            if (nearestEnemy) {
+                const direction = new THREE.Vector3()
+                    .subVectors(nearestEnemy.position, player.position)
+                    .normalize();
+                projectile.direction = direction;
+            } else {
+                // Direção aleatória se não houver inimigos
+                const angle = Math.random() * Math.PI * 2;
+                projectile.direction = new THREE.Vector3(
+                    Math.cos(angle),
+                    0,
+                    Math.sin(angle)
+                );
+            }
+            
+            projectile.speed = 0.3;
+            projectile.damage = 10 * projectileDamage;
+            projectile.lifetime = 100;
+            projectile.castShadow = true;
+            
+            scene.add(projectile);
+            projectiles.push(projectile);
+        }
+        
+        // Aplicar dano ao jogador
+        function damagePlayer(amount) {
+            playerHealth -= amount;
+            
+            // Efeito visual de dano
+            createParticleSystem(player.position, 0xff0000, 10);
+            
+            // Balançar a câmera
+            const shakeAmount = amount / 20;
+            camera.position.x += (Math.random() - 0.5) * shakeAmount;
+            camera.position.y += (Math.random() - 0.5) * shakeAmount;
+            camera.position.z += (Math.random() - 0.5) * shakeAmount;
+            
+            // Atualizar HUD
+            updatePlayerHUD();
+            
+            // Verificar game over
+            if (playerHealth <= 0) {
+                gameOver();
+            }
+        }
+        
+        // Game over
+        function gameOver() {
+            // Parar animação do jogo
+            cancelAnimationFrame(animationId);
+            
+            // Preencher informações na tela de game over
+            document.getElementById('levelText').textContent = playerLevel;
+            document.getElementById('scoreText').textContent = score;
+            
+            // Mostrar tela de game over
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            gameOverScreen.style.display = 'flex';
+            
+            // Configurar botão de reinício
+            document.getElementById('restartButton').addEventListener('click', restartGame);
+        }
+        
+        // Reiniciar jogo
+        function restartGame() {
+            // Esconder tela de game over
+            document.getElementById('gameOverScreen').style.display = 'none';
+            
+            // Limpar todos os objetos do jogo
+            for (const enemy of enemies) {
+                scene.remove(enemy);
+                removeHealthBar3D(enemy.id);
+            }
+            enemies.length = 0;
+            
+            for (const projectile of projectiles) {
+                scene.remove(projectile);
+            }
+            projectiles.length = 0;
+            
+            for (const orb of xpOrbs) {
+                scene.remove(orb);
+            }
+            xpOrbs.length = 0;
+            
+            for (const particle of particles) {
+                scene.remove(particle.mesh);
+            }
+            particles.length = 0;
+            
+            // Resetar status do jogador
+            playerLevel = 1;
+            playerSpeed = 1;
+            projectileDamage = 1;
+            projectileArea = 1;
+            projectileCount = 1;
+            xp = 0;
+            score = 0;
+            playerHealth = 100;
+            playerMaxHealth = 100;
+            
+            // Reposicionar jogador
+            player.position.set(0, 0.5, 0);
+            
+            // Remover barra de vida do jogador e criar nova
+            removeHealthBar3D('player');
+            createHealthBar3D('player', true);
+            
+            // Atualizar HUD
+            updatePlayerHUD();
+            
+            // Reiniciar animação
+            animate();
+        }
+        
+        // Atualizar informações do jogador
+        function updatePlayerInfo() {
+            updatePlayerHUD();
+        }
+        
+        // Processar ganho de XP
+        function collectXP(amount) {
+            xp += amount;
+            score += amount;
+            
+            // Verificar level up
+            const nextLevel = xpToLevel(playerLevel);
+            if (xp >= nextLevel) {
+                xp -= nextLevel;
+                playerLevel++;
+                playerMaxHealth += 10;
+                playerHealth = playerMaxHealth;
+                
+                // Melhorar habilidade aleatória
+                const upgrade = Math.floor(Math.random() * 4);
+                switch (upgrade) {
+                    case 0: playerSpeed += 0.2; break;
+                    case 1: projectileDamage += 0.5; break;
+                    case 2: projectileArea += 0.2; break;
+                    case 3: projectileCount += 1; break;
+                }
+                
+                // Efeito de level up
+                createParticleSystem(player.position, 0x00ffff, 30);
+                
+                // Mensagem de level up
+                const levelUpMessage = document.createElement('div');
+                levelUpMessage.style.position = 'absolute';
+                levelUpMessage.style.top = '40%';
+                levelUpMessage.style.left = '50%';
+                levelUpMessage.style.transform = 'translate(-50%, -50%)';
+                levelUpMessage.style.color = 'white';
+                levelUpMessage.style.fontSize = '32px';
+                levelUpMessage.style.fontWeight = 'bold';
+                levelUpMessage.style.textShadow = '0 0 10px #00ffff';
+                levelUpMessage.textContent = 'LEVEL UP!';
+                document.body.appendChild(levelUpMessage);
+                
+                setTimeout(() => {
+                    levelUpMessage.remove();
+                }, 2000);
+            }
+            
+            updatePlayerHUD();
+        }
+        
+        // Inicialização do jogo
+        function init() {
+            // Criar barra de vida para o jogador
+            createHealthBar3D('player', true);
+            
+            generateEnvironment();
+            updatePlayerHUD();
+            
+            // Configurar intervalo para spawnar inimigos
+            setInterval(spawnEnemy, 2000);
+            
+            // Não precisa mais do intervalo para disparar projéteis automáticos
+            // Agora o jogador atira manualmente com o mouse
+        }
+        
+        // Função de atualização e animação
+        let animationId;
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            // Verificar disparo contínuo quando o mouse está pressionado
+            if (isMouseDown) {
+                const currentTime = Date.now();
+                if (currentTime - lastShotTime >= shotCooldown) {
+                    shootAtMouse();
+                    lastShotTime = currentTime; // Atualiza o tempo do último disparo
+                }
+            }
+            
+            // Movimento do jogador com WASD
+            const moveSpeed = 0.1 * playerSpeed;
+            let moveX = 0;
+            let moveZ = 0;
+            
+            // Movimento padrão, não isométrico
+            if (keys['w'] || keys['ArrowUp']) moveZ -= moveSpeed;
+            if (keys['s'] || keys['ArrowDown']) moveZ += moveSpeed;
+            if (keys['a'] || keys['ArrowLeft']) moveX -= moveSpeed;
+            if (keys['d'] || keys['ArrowRight']) moveX += moveSpeed;
+            
+            // Aplicar movimento
+            player.position.x += moveX;
+            player.position.z += moveZ;
+            
+            // Atualizar câmera para seguir o jogador
+            const targetCameraPosition = new THREE.Vector3()
+                .copy(player.position)
+                .add(cameraOffset);
+            
+            camera.position.lerp(targetCameraPosition, cameraLerpFactor);
+            camera.lookAt(player.position);
+            
+            // Atualizar barra de vida do jogador
+            updateHealthBar3D('player', player, playerHealth, playerMaxHealth);
+            
+            // Mover projéteis
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                projectile.position.add(
+                    projectile.direction.clone().multiplyScalar(projectile.speed)
+                );
+                
+                projectile.lifetime--;
+                if (projectile.lifetime <= 0) {
+                    scene.remove(projectile);
+                    projectiles.splice(i, 1);
+                    continue;
+                }
+                
+                // Colisão com inimigos
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    if (projectile.position.distanceTo(enemy.position) < 0.5 + (0.5 * projectileArea)) {
+                        enemy.health -= projectile.damage;
+                        
+                        // Atualizar barra de vida
+                        updateHealthBar3D(enemy.id, enemy, enemy.health, enemy.maxHealth);
+                        
+                        // Criar partículas na colisão
+                        createParticleSystem(projectile.position, 0xffff00, 5);
+                        
+                        // Mostrar dano causado
+                        showDamageNumber(enemy.position, projectile.damage);
+                        
+                        // Remover projétil após acerto
+                        scene.remove(projectile);
+                        projectiles.splice(i, 1);
+                        
+                        // Verificar se o inimigo morreu
+                        if (enemy.health <= 0) {
+                            // Criar partículas na morte do inimigo
+                            createParticleSystem(enemy.position, enemy.material.color.getHex(), 10);
+                            
+                            // Dropar orbes de XP roxos
+                            createXpOrb(enemy.position, enemy.xpValue, 0x800080);
+                            createXpOrb(
+                                new THREE.Vector3(
+                                    enemy.position.x + 0.5,
+                                    enemy.position.y,
+                                    enemy.position.z + 0.5
+                                ),
+                                enemy.xpValue,
+                                0x800080
+                            );
+                            
+                            // Remover barra de vida
+                            removeHealthBar3D(enemy.id);
+                            
+                            // Remover inimigo
+                            scene.remove(enemy);
+                            enemies.splice(j, 1);
+                        }
+                        
+                        break;
+                    }
+                }
+            }
+            
+            // Mover inimigos em direção ao jogador
+            for (const enemy of enemies) {
+                const direction = new THREE.Vector3()
+                    .subVectors(player.position, enemy.position)
+                    .normalize();
+                
+                enemy.position.add(direction.multiplyScalar(enemy.speed));
+                
+                // Atualizar posição da barra de vida
+                updateHealthBar3D(enemy.id, enemy, enemy.health, enemy.maxHealth);
+                
+                // Verificar colisão com o jogador
+                if (enemy.position.distanceTo(player.position) < 1) {
+                    damagePlayer(enemy.damage * 0.1); // Aplicar 10% do dano por frame para não matar instantaneamente
+                }
+            }
+            
+            // Colisão entre inimigos
+            for (let i = 0; i < enemies.length; i++) {
+                for (let j = i + 1; j < enemies.length; j++) {
+                    const enemy1 = enemies[i];
+                    const enemy2 = enemies[j];
+                    const distance = enemy1.position.distanceTo(enemy2.position);
+                    
+                    if (distance < 1) {
+                        const pushDirection = new THREE.Vector3()
+                            .subVectors(enemy1.position, enemy2.position)
+                            .normalize();
+                        
+                        enemy1.position.add(pushDirection.clone().multiplyScalar(0.05));
+                        enemy2.position.add(pushDirection.clone().multiplyScalar(-0.05));
+                    }
+                }
+            }
+            
+            // Coleta de orbes de XP
+            for (let i = xpOrbs.length - 1; i >= 0; i--) {
+                const orb = xpOrbs[i];
+                
+                // Movimento de flutuação
+                orb.position.y = 0.3 + Math.sin(Date.now() * 0.005 + i) * 0.1;
+                
+                // Verificar colisão com o jogador
+                if (orb.position.distanceTo(player.position) < 1) {
+                    collectXP(orb.xpValue);
+                    createParticleSystem(orb.position, orb.material.color.getHex(), 5);
+                    scene.remove(orb);
+                    xpOrbs.splice(i, 1);
+                }
+            }
+            
+            // Atualizar partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const particle = particles[i];
+                
+                particle.position.add(particle.velocity);
+                particle.velocity.y -= 0.001; // Gravidade
+                particle.mesh.position.copy(particle.position);
+                
+                particle.lifetime--;
+                if (particle.lifetime <= 0) {
+                    scene.remove(particle.mesh);
+                    particles.splice(i, 1);
+                    continue;
+                }
+                
+                // Opacidade baseada no tempo de vida
+                const opacity = particle.lifetime / particle.maxLifetime;
+                particle.mesh.scale.set(opacity, opacity, opacity);
+            }
+
+            // Atualizar o mini mapa
+            drawMiniMap();
+
+            renderer.render(scene, camera);
+        }
+        
+        // Mostrar número de dano
+        function showDamageNumber(position, amount) {
+            const damageText = document.createElement('div');
+            damageText.style.position = 'absolute';
+            damageText.style.color = 'orange';
+            damageText.style.fontWeight = 'bold';
+            damageText.style.fontSize = '16px';
+            damageText.style.textShadow = '1px 1px 2px black';
+            damageText.style.pointerEvents = 'none';
+            damageText.textContent = Math.round(amount);
+            document.body.appendChild(damageText);
+            
+            // Posicionar o texto
+            const vector = position.clone();
+            vector.y += 1;
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+            
+            damageText.style.left = `${x}px`;
+            damageText.style.top = `${y}px`;
+            
+            // Animação
+            let animTime = 0;
+            const duration = 60;
+            const initialY = y;
+            
+            function animateDamageText() {
+                animTime++;
+                
+                if (animTime >= duration) {
+                    damageText.remove();
+                    return;
+                }
+                
+                // Movimento para cima e fade out
+                damageText.style.top = `${initialY - animTime * 0.5}px`;
+                damageText.style.opacity = 1 - (animTime / duration);
+                
+                requestAnimationFrame(animateDamageText);
+            }
+            
+            animateDamageText();
+        }
+        
+        // Redimensionar quando a janela for redimensionada
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Iniciar o jogo
+        init();
+        animate();
+    </script>
+</body>
+</html> 

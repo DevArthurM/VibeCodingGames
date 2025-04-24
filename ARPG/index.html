@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo Isométrico - Estilo Diablo</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        /* Estilo para a barra de habilidades */
+        #skillbar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        .skill-button {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skill-button:hover {
+            border-color: #888;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .skill-button.cooldown {
+            filter: grayscale(100%);
+            cursor: not-allowed;
+        }
+
+        .skill-icon {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+
+        .skill-key {
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Efeito para cooldown */
+        .cooldown-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 0%;
+            width: 100%;
+            background-color: rgba(0, 0, 255, 0.3);
+            transition: height 0.1s linear;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="instructions">Clique no mapa para mover o personagem. Segure o botão do mouse para atirar.</div>
+
+    <!-- Barra de munição e pontuação -->
+    <div id="ammo-counter"
+        style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: rgba(0, 0, 0, 0.7); color: white; padding: 10px 20px; border-radius: 5px; display: flex; align-items: center; font-family: Arial, sans-serif;">
+        <div style="margin-right: 10px; font-size: 24px;">🔫</div>
+        <div id="ammo">30 / 30</div>
+    </div>
+
+    <div id="score"
+        style="position: absolute; top: 20px; left: 20px; background-color: rgba(0, 0, 0, 0.7); color: white; padding: 5px 10px; border-radius: 5px; font-family: Arial, sans-serif;">
+        Pontuação: 0
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Configuração básica
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x87CEEB); // Cor do céu
+        document.body.appendChild(renderer.domElement);
+
+        // Iluminação
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+
+        // Configuração da câmera isométrica
+        camera.position.set(10, 10, 10);
+        camera.lookAt(0, 0, 0);
+
+        // Criar o terreno
+        const terrainSize = 200;
+        const terrainGeometry = new THREE.PlaneGeometry(terrainSize, terrainSize, 10, 10);
+        const terrainMaterial = new THREE.MeshLambertMaterial({ color: 0x3a9d23 }); // Verde para o gramado
+        const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
+        terrain.rotation.x = -Math.PI / 2;
+        scene.add(terrain);
+
+        // Função para criar objetos do cenário (árvores, pedras, arbustos)
+        function createSceneryObject(type, x, z) {
+            let geometry, material, height;
+
+            switch (type) {
+                case 'tree':
+                    // Tronco
+                    const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+                    const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                    trunk.position.set(x, 0.5, z);
+
+                    // Copa da árvore
+                    const leavesGeometry = new THREE.ConeGeometry(1, 2, 8);
+                    const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+                    const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+                    leaves.position.set(x, 2, z);
+
+                    scene.add(trunk);
+                    scene.add(leaves);
+
+                    return [trunk, leaves];
+
+                case 'rock':
+                    geometry = new THREE.DodecahedronGeometry(0.5, 0);
+                    material = new THREE.MeshLambertMaterial({ color: 0x808080 });
+                    height = 0.25;
+                    break;
+
+                case 'bush':
+                    geometry = new THREE.SphereGeometry(0.8, 6, 8);
+                    material = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+                    height = 0.5;
+                    break;
+            }
+
+            if (geometry && material) {
+                const object = new THREE.Mesh(geometry, material);
+                object.position.set(x, height, z);
+                scene.add(object);
+                return object;
+            }
+
+            return null;
+        }
+
+        // Criar o personagem (retângulo com cabeça)
+        const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.4); // Corpo retangular
+        const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.set(0, 0.4, 0);
+
+        const headGeometry = new THREE.SphereGeometry(0.3, 6, 16); // Cabeça circular
+        const headMaterial = new THREE.MeshLambertMaterial({ color: 0xffaaaa });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.set(0, 1.2, 0);
+
+        // Criar a arma para o jogador
+        function createGun() {
+            const gunGroup = new THREE.Group();
+
+            // Base da arma
+            const baseGeometry = new THREE.BoxGeometry(0.1, 0.4, 0.7);
+            const baseMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            gunGroup.add(base);
+
+            // Cano da arma
+            const barrelGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.6, 8);
+            const barrelMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+            const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+            barrel.rotation.x = Math.PI / 2; // Rotacionar para ficar na horizontal
+            barrel.position.set(0, 0.05, 0.4); // Posicionar na frente da base
+            gunGroup.add(barrel);
+
+            // Gatilho
+
+            return gunGroup;
+        }
+
+        const gun = createGun();
+        gun.position.set(0.3, 0.3, 0.6);
+
+        // Agrupar o personagem e a arma
+        const player = new THREE.Group();
+        player.add(body);
+        player.add(head);
+        player.add(gun);
+        scene.add(player);
+
+        // Adicionar objetos no cenário
+        const sceneryObjects = [];
+
+        // Árvores
+        for (let i = 0; i < 150; i++) {
+            const x = Math.random() * terrainSize - terrainSize / 2;
+            const z = Math.random() * terrainSize - terrainSize / 2;
+            if (Math.sqrt(x * x + z * z) > 5) {
+                const objects = createSceneryObject('tree', x, z);
+                if (Array.isArray(objects)) {
+                    sceneryObjects.push(...objects);
+                }
+            }
+        }
+
+        // Pedras
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * terrainSize - terrainSize / 2;
+            const z = Math.random() * terrainSize - terrainSize / 2;
+            if (Math.sqrt(x * x + z * z) > 5) {
+                const rock = createSceneryObject('rock', x, z);
+                if (rock) sceneryObjects.push(rock);
+            }
+        }
+
+        // Arbustos
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * terrainSize - terrainSize / 2;
+            const z = Math.random() * terrainSize - terrainSize / 2;
+            if (Math.sqrt(x * x + z * z) > 5) {
+                const bush = createSceneryObject('bush', x, z);
+                if (bush) sceneryObjects.push(bush);
+            }
+        }
+
+        // Variáveis para o movimento do jogador
+        let targetPosition = null;
+        let isMoving = false;
+        const moveSpeed = 0.2;
+
+        // Raycaster para detectar cliques no terreno
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Definir offset da câmera em relação ao jogador
+        const cameraOffset = new THREE.Vector3(5, 15, 0);
+
+        // Função para atualizar a posição da câmera para seguir o jogador
+        function updateCameraPosition() {
+            const targetCameraPosition = new THREE.Vector3().copy(player.position).add(cameraOffset);
+            camera.position.lerp(targetCameraPosition, 1);
+            camera.lookAt(player.position);
+        }
+
+        // Sistema de tiro
+        const bullets = [];
+        let isShooting = false;
+        let lastShotTime = 0;
+        const shootInterval = 50; // Tempo entre tiros em ms
+        let ammo = 80; // Munição inicial
+        const maxAmmo = 30; // Capacidade máxima de munição
+        let score = 0; // Pontuação do jogador
+        let isReloading = false;
+        const reloadTime = 2000; // Tempo para recarregar em ms
+
+        // Função para atualizar o HUD
+        function updateHUD() {
+            document.getElementById('ammo').textContent = `${ammo} / ${maxAmmo}`;
+            document.getElementById('score').textContent = `Pontuação: ${score}`;
+        }
+
+        // Função para recarregar a arma
+        function reloadGun() {
+            if (isReloading || ammo === maxAmmo) return;
+
+            isReloading = true;
+
+            // Efeito visual de recarga
+            const initialRotation = gun.rotation.z;
+            // gun.rotation.z = -Math.PI / 4; // Rotacionar a arma para baixo
+
+            setTimeout(() => {
+                ammo = maxAmmo;
+                isReloading = false;
+                // gun.rotation.z = initialRotation; // Voltar à posição original
+                updateHUD();
+            }, reloadTime);
+        }
+
+        window.addEventListener('mousemove', function (event) {
+            // Atualizar posição do mouse
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // Função para atualizar a rotação do personagem e da arma para apontar para o mouse
+        function updatePlayerRotation() {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrain);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+
+                // Calcular a direção do personagem para o ponto
+                const direction = new THREE.Vector3();
+                direction.subVectors(point, player.position);
+                direction.y = 0; // Manter a rotação apenas no eixo Y
+
+                // Fazer o personagem olhar para o ponto
+                if (direction.length() > 0.1) {
+                    const angle = Math.atan2(direction.x, direction.z);
+                    player.rotation.y = angle;
+
+                    // Ajustar posição da arma para acompanhar a rotação do jogador
+                    // gun.rotation.y = -Math.PI / 4; // Reiniciar rotação relativa
+                }
+            }
+        }
+
+        // Função para criar um projétil
+        function createBullet() {
+            if (ammo <= 0 || isReloading) {
+                // Som de arma sem munição
+                if (ammo <= 0) {
+                    // Recarregar automaticamente quando a munição acabar
+                    reloadGun();
+                }
+                return;
+            }
+
+            const currentTime = Date.now();
+            if (currentTime - lastShotTime < shootInterval) {
+                return; // Ainda não passou o intervalo entre tiros
+            }
+
+            ammo--;
+            updateHUD();
+            lastShotTime = currentTime;
+
+            // Criar o projétil
+            const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+
+            // Posicionar o projétil na ponta da arma
+            const barrelPosition = new THREE.Vector3();
+            gun.children[1].getWorldPosition(barrelPosition); // Pegar posição do cano da arma
+            bullet.position.copy(barrelPosition);
+
+            // Determinar a direção do tiro com base na rotação do jogador e na posição do mouse
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrain);
+
+            let direction = new THREE.Vector3(0, 0, 1); // Direção padrão (frente)
+
+            if (intersects.length > 0) {
+                direction = new THREE.Vector3();
+                direction.subVectors(intersects[0].point, bullet.position);
+                direction.y = 0; // Manter os tiros no plano horizontal
+                direction.normalize();
+            }
+
+            // Adicionar propriedades ao projétil
+            bullet.userData = {
+                velocity: direction.clone().multiplyScalar(0.5), // Velocidade do projétil
+                damage: 10, // Dano causado
+                lifetime: 100 // Duração do projétil em frames
+            };
+
+            // Adicionar efeito de flash de tiro
+            const muzzleFlash = new THREE.PointLight(0xffaa00, 1, 3);
+            muzzleFlash.position.copy(barrelPosition);
+            scene.add(muzzleFlash);
+
+            // Remover o flash após um curto período
+            setTimeout(() => {
+                scene.remove(muzzleFlash);
+            }, 50);
+
+            // Efeito de recuo da arma
+            // gun.position.z -= 0.05;
+            // setTimeout(() => {
+            //     gun.position.z += 0.05;
+            // }, 50);
+
+            scene.add(bullet);
+            bullets.push(bullet);
+        }
+
+        // Tratamento de cliques e pressionar/soltar do mouse
+        window.addEventListener('mousedown', function (event) {
+            // Botão esquerdo do mouse
+            if (event.button === 0) {
+                // Verificar se é um clique com ctrl pressionado para movimento
+                if (event.ctrlKey) {
+                    // Calcular posição do mouse normalizada
+                    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                    // Atualizar o raycaster
+                    raycaster.setFromCamera(mouse, camera);
+
+                    // Verificar interseção com o terreno
+                    const intersects = raycaster.intersectObject(terrain);
+
+                    if (intersects.length > 0) {
+                        const point = intersects[0].point;
+
+                        // Verificar se o local está livre de obstáculos
+                        let canMove = true;
+                        for (const obj of sceneryObjects) {
+                            const dx = point.x - obj.position.x;
+                            const dz = point.z - obj.position.z;
+                            const distance = Math.sqrt(dx * dx + dz * dz);
+
+                            if (distance < 1) {
+                                canMove = false;
+                                break;
+                            }
+                        }
+
+                        if (canMove) {
+                            targetPosition = new THREE.Vector3(point.x, player.position.y, point.z);
+                            isMoving = true;
+                        }
+                    }
+                } else {
+                    // Iniciar tiro contínuo
+                    isShooting = true;
+                    createBullet(); // Primeiro tiro imediato
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', function (event) {
+            // Parar de atirar quando soltar o botão esquerdo
+            if (event.button === 0) {
+                isShooting = false;
+            }
+        });
+
+        // Controle de teclas para movimento WASD
+        const keys = {
+            w: false,
+            a: false,
+            s: false,
+            d: false
+        };
+
+        // Detectar teclas pressionadas
+        window.addEventListener('keydown', function (event) {
+            const key = event.key.toLowerCase();
+
+            // Atualizar estado das teclas
+            if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+                keys[key] = true;
+                // Quando começar a usar WASD, cancelar movimento por clique
+                isMoving = false;
+            }
+
+            // Recarregar arma com R
+            if (key === 'r') {
+                reloadGun();
+            }
+        });
+
+        // Detectar teclas soltas
+        window.addEventListener('keyup', function (event) {
+            const key = event.key.toLowerCase();
+
+            if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+                keys[key] = false;
+            }
+        });
+
+        // Função para atualizar a posição do jogador (modificada para suportar WASD)
+        function updatePlayerPosition() {
+            // Movimento por WASD
+            let moveX = 0;
+            let moveZ = 0;
+
+            if (keys.w) moveX -= moveSpeed; // moveX -= moveSpeed;
+            if (keys.s) moveX += moveSpeed; // moveX += moveSpeed;
+            if (keys.a) moveZ += moveSpeed; // moveZ += moveSpeed
+            if (keys.d) moveZ -= moveSpeed; // moveZ += moveSpeed;
+
+            // Se houver movimento por WASD
+            if (moveX !== 0 || moveZ !== 0) {
+                // Normalizar diagonal (movimento na diagonal não deve ser mais rápido)
+                if (moveX !== 0 && moveZ !== 0) {
+                    const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                    moveX /= length;
+                    moveZ /= length;
+                    moveX *= moveSpeed;
+                    moveZ *= moveSpeed;
+                }
+
+                // Rotacionar o personagem na direção do movimento
+                const angle = Math.atan2(moveX, moveZ);
+                player.rotation.y = angle;
+
+                // Aplicar movimento
+                player.position.x += moveX;
+                player.position.z += moveZ;
+
+                // Animação de movimento
+                player.position.y = 0.4 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.1;
+            }
+            // Movimento por clique (quando não está usando WASD)
+            else if (isMoving && targetPosition) {
+                const dx = targetPosition.x - player.position.x;
+                const dz = targetPosition.z - player.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance > 0.1) {
+                    const dirX = dx / distance;
+                    const dirZ = dz / distance;
+
+                    player.position.x += dirX * moveSpeed;
+                    player.position.z += dirZ * moveSpeed;
+
+                    player.position.y = 0.4 + Math.abs(Math.sin(Date.now() * 0.01)) * 0.1;
+                } else {
+                    isMoving = false;
+                    player.position.y = 0.4;
+                }
+            } else {
+                // Se não estiver se movendo, voltar à altura padrão
+                player.position.y = 0.4;
+            }
+        }
+
+        // Adicionar limite de movimento para não sair do mapa
+        function constrainToMap() {
+            const halfSize = terrainSize / 2 - 1;
+
+            if (player.position.x > halfSize) player.position.x = halfSize;
+            if (player.position.x < -halfSize) player.position.x = -halfSize;
+            if (player.position.z > halfSize) player.position.z = halfSize;
+            if (player.position.z < -halfSize) player.position.z = -halfSize;
+        }
+
+        // Redimensionar a janela
+        window.addEventListener('resize', function () {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Adicionar grade para referência visual
+        const gridHelper = new THREE.GridHelper(terrainSize, 20, 0x000000, 0x000000);
+        gridHelper.position.y = 0.01;
+        gridHelper.material.opacity = 0.2;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        // =============== SISTEMA DE CAVERNAS E INIMIGOS ===============
+        const caves = [];
+        const enemies = [];
+        const caveSpawnChance = 0.15;
+        const gridSize = 10;
+        const maxCaves = 20;
+
+        // Função para criar uma caverna
+        function createCave(x, z) {
+            const caveGeometry = new THREE.DodecahedronGeometry(3, 0);
+            const caveMaterial = new THREE.MeshLambertMaterial({ color: 0x303030 });
+            const cave = new THREE.Mesh(caveGeometry, caveMaterial);
+            cave.position.set(x, 0.25, z);
+            scene.add(cave);
+
+            const caveLight = new THREE.PointLight(0xff6600, 0.8, 5);
+            caveLight.position.set(x, 0.1, z);
+            scene.add(caveLight);
+
+            return {
+                position: new THREE.Vector3(x, 0, z),
+                mesh: cave,
+                light: caveLight,
+                lastSpawnTime: 0,
+                spawnCooldown: 5000 + Math.random() * 5000
+            };
+        }
+
+        // Função para criar inimigos
+        function createEnemy(x, z) {
+            // Tipos de inimigos e suas características
+            const enemyTypes = {
+                soldado: {
+                    color: 0x0000ff,
+                    headColor: 0x00ff00,
+                    health: 30,
+                    speed: 0.08,
+                    damage: 5,
+                    scale: 1.0,
+                    points: 10
+                },
+                tanque: {
+                    color: 0x808080,
+                    headColor: 0x404040,
+                    health: 100,
+                    speed: 0.03,
+                    damage: 15,
+                    scale: 1.5,
+                    points: 30
+                },
+                veloz: {
+                    color: 0xff0000,
+                    headColor: 0xff6666,
+                    health: 15,
+                    speed: 0.15,
+                    damage: 3,
+                    scale: 0.8,
+                    points: 15
+                },
+                elite: {
+                    color: 0xffd700,
+                    headColor: 0xffa500,
+                    health: 60,
+                    speed: 0.06,
+                    damage: 10,
+                    scale: 1.2,
+                    points: 25
+                },
+                boss: {
+                    color: 0x800080,
+                    headColor: 0x4b0082,
+                    health: 200,
+                    speed: 0.04,
+                    damage: 20,
+                    scale: 2.0,
+                    points: 50
+                }
+            };
+
+            // Escolher um tipo aleatório de inimigo
+            const types = Object.keys(enemyTypes);
+            const selectedType = types[Math.floor(Math.random() * types.length)];
+            const typeData = enemyTypes[selectedType];
+
+            // Criar o corpo do inimigo
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.4);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: typeData.color });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.set(0, 0.4, 0);
+            body.scale.set(typeData.scale, typeData.scale, typeData.scale);
+
+            // Criar a cabeça do inimigo
+            const headGeometry = new THREE.SphereGeometry(0.3, 6, 16);
+            const headMaterial = new THREE.MeshLambertMaterial({ color: typeData.headColor });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.set(0, 1.2 * typeData.scale, 0);
+            head.scale.set(typeData.scale, typeData.scale, typeData.scale);
+
+
+            // Criar o grupo para o inimigo
+            const enemyGroup = new THREE.Group();
+            enemyGroup.add(body);
+            enemyGroup.add(head);
+            enemyGroup.position.set(x, 0, z);
+
+            // Barra de vida
+            const healthBarWidth = 1 * typeData.scale;
+            const healthBarHeight = 0.15;
+            const healthBarCanvas = document.createElement('canvas');
+            healthBarCanvas.width = 100;
+            healthBarCanvas.height = 20;
+            const healthBarContext = healthBarCanvas.getContext('2d');
+
+            // Desenhar fundo preto
+            healthBarContext.fillStyle = 'black';
+            healthBarContext.fillRect(0, 0, 100, 20);
+
+            // Desenhar barra de vida com cor baseada no tipo
+            healthBarContext.fillStyle = selectedType === 'boss' ? '#800080' : 
+                                        selectedType === 'elite' ? '#ffd700' : 
+                                        selectedType === 'tanque' ? '#808080' : 'red';
+            healthBarContext.fillRect(2, 2, 96, 16);
+
+            const healthBarTexture = new THREE.CanvasTexture(healthBarCanvas);
+            healthBarTexture.minFilter = THREE.LinearFilter;
+
+            const healthBarMaterial = new THREE.SpriteMaterial({
+                map: healthBarTexture,
+                depthTest: false
+            });
+
+            const healthBarSprite = new THREE.Sprite(healthBarMaterial);
+            healthBarSprite.position.set(0, 2.0 * typeData.scale, 0);
+            healthBarSprite.scale.set(healthBarWidth, healthBarHeight, 1);
+            enemyGroup.add(healthBarSprite);
+
+            // Adicionar informações do inimigo
+            enemyGroup.userData = {
+                type: selectedType,
+                health: typeData.health,
+                maxHealth: typeData.health,
+                speed: typeData.speed,
+                damage: typeData.damage,
+                attackCooldown: 1000,
+                lastAttackTime: 0,
+                caveOrigin: new THREE.Vector3(x, 0, z),
+                spawnTime: Date.now(),
+                healthBar: healthBarSprite,
+                healthBarCanvas: healthBarCanvas,
+                healthBarContext: healthBarContext,
+                healthBarTexture: healthBarTexture,
+                body: body,
+                points: typeData.points
+            };
+
+            scene.add(enemyGroup);
+            enemies.push(enemyGroup);
+
+            // Adicionar efeito de spawn com cor baseada no tipo
+            const spawnEffect = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5 * typeData.scale, 8, 8),
+                new THREE.MeshBasicMaterial({
+                    color: typeData.color,
+                    transparent: true,
+                    opacity: 0.7
+                })
+            );
+            spawnEffect.position.set(x, 0.35, z);
+            spawnEffect.userData = {
+                timeCreated: Date.now(),
+                lifetime: 1000
+            };
+            scene.add(spawnEffect);
+
+            return enemyGroup;
+        }
+
+        // Função para inicializar inimigos nas cavernas
+        function spawnInitialEnemies() {
+            console.log("Gerando inimigos iniciais");
+            for (const cave of caves) {
+                createEnemy(cave.position.x, cave.position.z);
+                cave.lastSpawnTime = Date.now();
+            }
+        }
+
+        // Gerar cavernas pelo mapa
+        function generateCaves() {
+            const halfSize = terrainSize / 2;
+            const gridCount = Math.floor(terrainSize / gridSize);
+
+            for (let i = 0; i < gridCount; i++) {
+                for (let j = 0; j < gridCount; j++) {
+                    const x = (i * gridSize) - halfSize + (gridSize / 2);
+                    const z = (j * gridSize) - halfSize + (gridSize / 2);
+
+                    const distanceToPlayer = Math.sqrt(x * x + z * z);
+                    if (distanceToPlayer < 20) continue;
+
+                    if (caves.length >= maxCaves) break;
+
+                    if (Math.random() < caveSpawnChance) {
+                        caves.push(createCave(x, z));
+                    }
+                }
+
+                if (caves.length >= maxCaves) break;
+            }
+
+            console.log(`Geradas ${caves.length} cavernas no mapa.`);
+            setTimeout(spawnInitialEnemies, 2000);
+        }
+
+        // Função para dano no jogador
+        function damagePlayer(damage) {
+            console.log(`Jogador recebeu ${damage} de dano!`);
+
+            // Efeito visual de dano
+            body.material.color.set(0xff8888);
+            setTimeout(() => {
+                body.material.color.set(0xff0000);
+            }, 100);
+        }
+
+        // Atualizar comportamento dos inimigos
+        function updateEnemies() {
+            const currentTime = Date.now();
+
+            // Tentar spawnar novos inimigos nas cavernas
+            for (const cave of caves) {
+                if (currentTime - cave.lastSpawnTime > cave.spawnCooldown && enemies.length < 50) {
+                    cave.lastSpawnTime = currentTime;
+                    cave.spawnCooldown = 5000 + Math.random() * 10000;
+                    createEnemy(cave.position.x, cave.position.z);
+                }
+            }
+
+            // Atualizar cada inimigo
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const data = enemy.userData;
+
+                // Atualizar a barra de vida
+                if (data.healthBar && data.healthBarContext && data.healthBarTexture) {
+                    const healthRatio = data.health / data.maxHealth;
+
+                    data.healthBarContext.clearRect(0, 0, 100, 20);
+                    data.healthBarContext.fillStyle = 'black';
+                    data.healthBarContext.fillRect(0, 0, 100, 20);
+                    data.healthBarContext.fillStyle = 'red';
+                    const healthWidth = Math.max(0, Math.floor(96 * healthRatio));
+                    data.healthBarContext.fillRect(2, 2, healthWidth, 16);
+                    data.healthBarTexture.needsUpdate = true;
+                }
+
+                // Verificar se está morto
+                if (data.health <= 0) {
+                    // Efeito de morte
+                    const deathEffect = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.8, 8, 8),
+                        new THREE.MeshBasicMaterial({
+                            color: 0xff0000,
+                            transparent: true,
+                            opacity: 0.7
+                        })
+                    );
+                    deathEffect.position.copy(enemy.position);
+                    deathEffect.userData = {
+                        timeCreated: currentTime,
+                        lifetime: 1000
+                    };
+                    scene.add(deathEffect);
+
+                    // Aumentar a pontuação
+                    score += data.points;
+                    updateHUD();
+
+                    // Remover inimigo
+                    scene.remove(enemy);
+                    enemies.splice(i, 1);
+                    continue;
+                }
+
+                // Calcular direção ao jogador
+                const dirToPlayer = new THREE.Vector3();
+                dirToPlayer.subVectors(player.position, enemy.position).normalize();
+
+                // Nova posição pretendida
+                const newPosition = new THREE.Vector3();
+                newPosition.copy(enemy.position);
+                newPosition.x += dirToPlayer.x * data.speed;
+                newPosition.z += dirToPlayer.z * data.speed;
+
+                // Verificar colisão com outros inimigos
+                let canMove = true;
+                const collisionRadius = 1.0; // Raio de colisão entre inimigos
+
+                for (let j = 0; j < enemies.length; j++) {
+                    if (i !== j) { // Não verificar colisão consigo mesmo
+                        const otherEnemy = enemies[j];
+                        const distance = newPosition.distanceTo(otherEnemy.position);
+
+                        if (distance < collisionRadius) {
+                            canMove = false;
+                            
+                            // Calcular vetor de separação
+                            const separationVector = new THREE.Vector3();
+                            separationVector.subVectors(enemy.position, otherEnemy.position);
+                            separationVector.normalize();
+                            
+                            // Aplicar pequeno ajuste de posição para evitar sobreposição
+                            enemy.position.x += separationVector.x * 0.02;
+                            enemy.position.z += separationVector.z * 0.02;
+                            break;
+                        }
+                    }
+                }
+
+                // Mover apenas se não houver colisão
+                if (canMove) {
+                    enemy.position.copy(newPosition);
+                }
+
+                // Animação de movimento
+                data.body.position.y = 0.35 + Math.sin(currentTime * 0.01 * data.speed * 10) * 0.1;
+
+                // Fazer o inimigo olhar para o jogador
+                if (dirToPlayer.length() > 0.1) {
+                    const angle = Math.atan2(dirToPlayer.x, dirToPlayer.z);
+                    enemy.rotation.y = angle;
+                }
+
+                // Atacar o jogador quando próximo
+                const distToPlayer = enemy.position.distanceTo(player.position);
+                if (distToPlayer < 1.2) {
+                    if (currentTime - data.lastAttackTime > data.attackCooldown) {
+                        data.lastAttackTime = currentTime;
+                        damagePlayer(data.damage);
+
+                        // Knockback
+                        const knockbackDir = new THREE.Vector3().subVectors(player.position, enemy.position).normalize();
+                        player.position.x += knockbackDir.x * 0.3;
+                        player.position.z += knockbackDir.z * 0.3;
+                    }
+                }
+            }
+        }
+
+        // Atualizar projéteis (balas)
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                const data = bullet.userData;
+
+                // Atualizar posição
+                bullet.position.add(data.velocity);
+
+                // Reduzir tempo de vida
+                data.lifetime--;
+                if (data.lifetime <= 0) {
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                // Verificar colisões com inimigos
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+
+                    if (bullet.position.distanceTo(enemy.position) < 1) {
+                        // Causar dano
+                        enemy.userData.health -= data.damage;
+
+                        // Efeito de impacto
+                        const impactEffect = new THREE.Mesh(
+                            new THREE.SphereGeometry(0.2, 8, 8),
+                            new THREE.MeshBasicMaterial({
+                                color: 0xffff00,
+                                transparent: true,
+                                opacity: 0.7
+                            })
+                        );
+                        impactEffect.position.copy(bullet.position);
+                        impactEffect.userData = {
+                            timeCreated: Date.now(),
+                            lifetime: 300
+                        };
+                        scene.add(impactEffect);
+
+                        // Remover a bala
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Gerar cavernas
+        generateCaves();
+
+        // Inicializar HUD
+        updateHUD();
+
+        // Loop de animação
+        function animate() {
+            requestAnimationFrame(animate);
+
+            updatePlayerPosition();
+            constrainToMap();
+            updateCameraPosition();
+            updatePlayerRotation();
+
+            // Verificar se deve criar uma nova bala
+            if (isShooting) {
+                createBullet();
+            }
+
+            updateBullets();
+            updateEnemies();
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
